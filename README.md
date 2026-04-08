@@ -1,24 +1,20 @@
-# MiniERP - Sistemas de Gestión Empresarial
+# MiniERP - Sistemas de Gestión Empresarial AA2
 
 ## Tabla de Contenidos
 
 - [Descripción](#descripción)
 - [Tecnologías](#tecnologías)
 - [Instalación y Uso](#instalación-y-uso)
-- [Fase 1: Análisis y Modelado de Datos](#fase-1-análisis-y-modelado-de-datos)
-  - [1.1 Justificación del Modelo](#11-justificación-del-modelo)
-  - [1.2 Relaciones y Cardinalidades](#12-relaciones-y-cardinalidades)
-  - [1.3 Diagrama Entidad-Relación](#13-diagrama-entidad-relación)
-- [Fase 2: Implementación en Django](#fase-2-implementación-en-django)
-  - [2.1 Estructura del Proyecto](#21-estructura-del-proyecto)
-  - [2.2 Modelos Implementados](#22-modelos-implementados)
-  - [2.3 Decisiones de Diseño](#23-decisiones-de-diseño)
-- [Fase 3: Panel de Administración](#fase-3-panel-de-administración)
-  - [3.1 Configuración del Admin](#31-configuración-del-admin)
+- [Fase 1: Lógica de Negocio y UI](#fase-1-lógica-de-negocio-y-ui)
+  - [1.1 Formularios y Validación](#11-formularios-y-validación)
+  - [1.2 Cálculos Automáticos](#12-cálculos-automáticos)
+- [Fase 2: Automatización y Módulo CRM](#fase-2-automatización-y-módulo-crm)
+  - [2.1 Señales (Signals)](#21-señales-signals)
+  - [2.2 Pipeline de CRM](#22-pipeline-de-crm)
 
 ## Descripción
 
-Este proyecto es un sistema básico de gestión empresarial (ERP) desarrollado con Django. Permite gestionar clientes, productos, pedidos y sus líneas a través del panel de administración de Django.
+Evolución del MiniERP con lógica de negocio, automatización mediante signals, gestión del embudo de ventas (CRM) y despliegue profesional.
 
 ## Tecnologías
 
@@ -44,110 +40,52 @@ Acceder al panel de administración en: http://127.0.0.1:8000/admin
 
 ---
 
-## Fase 1: Análisis y Modelado de Datos
+## Fase 1: Lógica de Negocio y UI
 
-### 1.1 Justificación del Modelo
+### 1.1 Formularios y Validación
 
-He organizado los modelos en dos categorías:
+Se han creado dos formularios en `ventas/forms.py`:
 
-#### Datos Maestros (en app `core`)
+- **ProductoForm**: Valida que el stock nunca sea inferior a 0.
+- **ClienteForm**: Valida que el email tenga dominio corporativo (`@empresa.com`). La unicidad del DNI/CIF ya está garantizada por el modelo (`unique=True`).
 
-Son los datos estables que no cambian frecuentemente:
+### 1.2 Cálculos Automáticos
 
-- **Cliente**: Información de los clientes (nombre, email, DNI, teléfono).
-- **Producto**: Catálogo de productos con su SKU, precio base y tipo de IVA.
-- **EstadoPedido**: Estados posibles de un pedido (BORRADOR, CONFIRMADO, FACTURADO, COBRADO).
+Se ha implementado `calcular_totales()` en el modelo `Pedido` usando el tipo `Decimal`:
 
-#### Datos Transaccionales (en app `ventas`)
+- **Base** = suma de (precio_unitario × cantidad) de todas las líneas
+- **IVA** = Base × 0.21
+- **Total** = Base + IVA
 
-Son los datos que representan operaciones del día a día:
+El método se ejecuta automáticamente cada vez que se guarda una `LineaPedido` mediante `save()`.
 
-- **Pedido**: La cabecera del pedido con fecha, total y referencias al cliente y estado.
-- **LineaPedido**: El detalle de cada producto vendido en un pedido (cantidad y precio aplicado).
+---
 
-### 1.2 Relaciones y Cardinalidades
+## Fase 2: Automatización y Módulo CRM
 
-Las relaciones entre los modelos son:
+### 2.1 Señales (Signals)
 
-1. **Cliente → Pedido** (1:N)
-   - Un cliente puede tener muchos pedidos
-   - Política: `RESTRICT` (no se puede borrar un cliente con pedidos)
+Se ha implementado una `post_save` signal en `ventas/signals.py` sobre el modelo `Pedido`:
 
-2. **EstadoPedido → Pedido** (1:N)
-   - Un estado puede estar en muchos pedidos
-   - Política: `RESTRICT` (no se puede borrar un estado en uso)
+- Cuando el estado cambia a `CONFIRMADO`, descuenta automáticamente el stock de cada producto incluido en las líneas del pedido.
+- Si no hay stock suficiente, se registra un error en los logs sin modificar el stock.
 
-3. **Pedido → LineaPedido** (1:N)
-   - Un pedido tiene muchas líneas
-   - Política: `CASCADE` (si se borra el pedido, se borran sus líneas)
+### 2.2 Pipeline de CRM
 
-4. **Producto → LineaPedido** (1:N)
-   - Un producto puede estar en muchas líneas de diferentes pedidos
-   - Política: `RESTRICT` (no se puede borrar un producto con histórico de ventas)
+Se ha creado la app `crm` con el modelo `Oportunidad`, que incluye los campos: título, cliente, valor estimado, etapa y fecha de cierre.
 
-### 1.3 Diagrama Entidad-Relación
+Las etapas del pipeline son: Prospección, Propuesta, Negociación, Cerrada Ganada, Cerrada Perdida.
 
-![Diagrama ER del MiniERP](images/diagrama-er.png)
+#### KPI: Tasa de Conversión
 
-## Fase 2: Implementación en Django
+La tasa de conversión mide el porcentaje de oportunidades que acaban en venta cerrada.
 
-### 2.1 Estructura del Proyecto
+**Fórmula:**
+Tasa de Conversión = (Oportunidades "Cerrada Ganada" / Total de oportunidades) × 100
+
+**Cómo se calcularía con los datos del modelo:**
+```python
+total = Oportunidad.objects.count()
+ganadas = Oportunidad.objects.filter(etapa='GAN').count()
+tasa = (ganadas / total) * 100 if total > 0 else 0
 ```
-sistemas-gestion-empresarial-aa1/
-├── manage.py
-├── db.sqlite3
-├── minierp/              # Configuración del proyecto
-│   ├── settings.py
-│   ├── urls.py
-│   └── wsgi.py
-├── core/                 # App para modelos maestros
-│   ├── models.py
-│   ├── admin.py
-│   └── migrations/
-├── ventas/               # App para modelos transaccionales
-│   ├── models.py
-│   ├── admin.py
-│   └── migrations/
-└── README.md
-```
-
-### 2.2 Modelos Implementados
-
-#### Modelos en `core/models.py`:
-
-- **Cliente**: Con campos `nombre`, `email` (UNIQUE), `telefono`, `dni` (UNIQUE)
-- **Producto**: Con campos `sku` (UNIQUE), `nombre`, `precio_base`, `tipo_iva`
-- **EstadoPedido**: Con campo `codigo` (UNIQUE) usando CHOICES para los estados
-
-#### Modelos en `ventas/models.py`:
-
-- **Pedido**: Con `fecha_pedido`, `total`, `cliente` (FK), `estado` (FK)
-- **LineaPedido**: Con `pedido` (FK), `producto` (FK), `cantidad`, `precio_unitario`
-  - Incluye un CHECK constraint para asegurar que `cantidad > 0`
-
-### 2.3 Decisiones de Diseño
-
-**Claves primarias:** Uso el `id` automático de Django en todos los modelos.
-
-**Políticas ON_DELETE:**
-- `RESTRICT` en Cliente, Producto y EstadoPedido: Para proteger el histórico
-- `CASCADE` en LineaPedido: Las líneas no tienen sentido sin su pedido
-
-**Constraints:**
-- Campos UNIQUE: `dni`, `email`, `sku`, `codigo`
-- CHECK constraint: `cantidad > 0` en LineaPedido
-
-## Fase 3: Panel de Administración
-
-### 3.1 Configuración del Admin
-
-He registrado todos los modelos en sus respectivos archivos `admin.py`:
-
-**En `core/admin.py`:**
-- ClienteAdmin: Muestra nombre, email, teléfono y DNI
-- ProductoAdmin: Muestra SKU, nombre, precio e IVA
-- EstadoPedidoAdmin: Muestra el código del estado
-
-**En `ventas/admin.py`:**
-- PedidoAdmin: Muestra id, fecha, total, cliente y estado
-- LineaPedidoAdmin: Muestra id, pedido, producto, cantidad y precio
