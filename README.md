@@ -11,6 +11,9 @@
 - [Fase 2: Automatización y Módulo CRM](#fase-2-automatización-y-módulo-crm)
   - [2.1 Señales (Signals)](#21-señales-signals)
   - [2.2 Pipeline de CRM](#22-pipeline-de-crm)
+- [Fase 3: API e Implantación](#fase-3-api-e-implantación)
+  - [3.1 API con DRF](#31-api-con-drf)
+  - [3.2 Dockerización y Entorno](#32-dockerización-y-entorno)
 
 ## Descripción
 
@@ -20,7 +23,10 @@ Evolución del MiniERP con lógica de negocio, automatización mediante signals,
 
 - Python 3.13
 - Django 6.0.1
-- SQLite3
+- Django REST Framework
+- PostgreSQL / SQLite3
+- Docker / Docker Compose
+- Gunicorn + WhiteNoise
 
 ## Instalación y Uso
 ```bash
@@ -37,6 +43,14 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 Acceder al panel de administración en: http://127.0.0.1:8000/admin
+
+### Con Docker
+```bash
+cp .env.example .env
+docker-compose up --build
+docker-compose exec web python manage.py createsuperuser
+```
+Acceder en: http://localhost:8000
 
 ---
 
@@ -89,3 +103,32 @@ total = Oportunidad.objects.count()
 ganadas = Oportunidad.objects.filter(etapa='GAN').count()
 tasa = (ganadas / total) * 100 if total > 0 else 0
 ```
+
+---
+
+## Fase 3: API e Implantación
+
+### 3.1 API con DRF
+
+Se ha creado el endpoint `/api/productos/` usando Django REST Framework que devuelve el listado de productos en formato JSON.
+
+El endpoint está protegido con `IsAuthenticated`, por lo que solo usuarios autenticados pueden acceder al stock.
+
+Ejemplo de respuesta:
+```json
+[
+  {
+    "id": 1,
+    "sku": "PROD-001",
+    "nombre": "Producto ejemplo",
+    "precio_base": "10.00",
+    "stock": 50
+  }
+]
+```
+
+### 3.2 Dockerización y Entorno
+
+La aplicación se despliega con Docker Compose levantando dos servicios: la app Django con Gunicorn y una base de datos PostgreSQL.
+
+Las variables de entorno se gestionan mediante un archivo `.env`. Consulta `.env.example` para ver las variables necesarias: `DEBUG`, `SECRET_KEY`, `DB_NAME`, `DB_USER` y `DB_PASS`.
